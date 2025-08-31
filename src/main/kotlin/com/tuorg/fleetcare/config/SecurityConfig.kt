@@ -1,0 +1,66 @@
+package com.tuorg.fleetcare.config
+
+import com.tuorg.fleetcare.security.JwtAuthEntryPoint
+import com.tuorg.fleetcare.security.JwtAuthFilter
+import com.tuorg.fleetcare.security.JwtUtil
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Configuration
+import org.springframework.http.HttpMethod
+import org.springframework.security.config.Customizer.withDefaults
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
+import org.springframework.security.config.annotation.web.builders.HttpSecurity
+import org.springframework.security.config.http.SessionCreationPolicy
+import org.springframework.security.web.SecurityFilterChain
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.web.cors.CorsConfiguration
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource
+import org.springframework.web.cors.CorsConfigurationSource
+
+@Configuration
+@EnableMethodSecurity(prePostEnabled = true)
+class SecurityConfig(
+    @Value("\${app.cors.allowed-origins}") private val allowedOrigins: String,
+    @Value("\${app.jwt.secret}") private val jwtSecret: String,
+    @Value("\${app.jwt.exp-minutes}") private val jwtExpMinutes: Long,
+) {
+    @Bean
+    fun jwtUtil() = JwtUtil(jwtSecret, jwtExpMinutes)
+
+    @Bean
+    fun jwtAuthFilter(jwtUtil: JwtUtil) = JwtAuthFilter(jwtUtil)
+
+    @Bean
+    fun securityFilterChain(
+        http: HttpSecurity,
+        jwtAuthFilter: JwtAuthFilter,
+        jwtAuthEntryPoint: JwtAuthEntryPoint
+    ): SecurityFilterChain {
+        http
+            .csrf { it.disable() }
+            .cors { }
+            .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
+            .exceptionHandling { it.authenticationEntryPoint(jwtAuthEntryPoint) }
+            .authorizeHttpRequests {
+                it.requestMatchers("/auth/**").permitAll()
+                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                    .requestMatchers("/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
+                    .requestMatchers("/actuator/**").permitAll()
+                    .anyRequest().authenticated()
+            }
+            .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
+        return http.build()
+    }
+
+    @Bean
+    fun corsConfigurationSource(): CorsConfigurationSource {
+        val cfg = CorsConfiguration()
+        cfg.allowedOrigins = allowedOrigins.split(",").map { it.trim() }
+        cfg.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
+        cfg.allowedHeaders = listOf("*", "Authorization", "Content-Type")
+        cfg.exposedHeaders = listOf("Authorization")
+        val source = UrlBasedCorsConfigurationSource()
+        source.registerCorsConfiguration("/**", cfg)
+        return source
+    }
+}
