@@ -15,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.*
 import java.time.format.DateTimeFormatter
 
-@Tag(name = "Notificaciones")
+@Tag(name = "Notificaciones", description = "Gestión de notificaciones del usuario")
 @SecurityRequirement(name = "bearer-jwt")
 @RestController
 @RequestMapping("/notifications")
@@ -25,6 +25,7 @@ class NotificationController(
     private val iso = DateTimeFormatter.ISO_INSTANT
 
     // GET /notifications?page=0&size=20
+    @Operation(summary = "Lista las notificaciones NO leídas del usuario, paginadas")
     @GetMapping
     fun unread(
         @RequestParam(defaultValue = "0") page: Int,
@@ -59,6 +60,7 @@ class NotificationController(
     }
 
     // PATCH /notifications/{id}/read  → marcar una como leída
+    @Operation(summary = "Marca una notificación como leída")
     @PatchMapping("/{id}/read")
     @Transactional
     fun markRead(@PathVariable id: Long): ResponseEntity<Void> {
