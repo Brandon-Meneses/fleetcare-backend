@@ -57,8 +57,9 @@ class SecurityConfig(
         val cfg = CorsConfiguration()
         cfg.allowedOrigins = allowedOrigins.split(",").map { it.trim() }
         cfg.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
-        cfg.allowedHeaders = listOf("*", "Authorization", "Content-Type")
+        cfg.allowedHeaders = listOf("*")
         cfg.exposedHeaders = listOf("Authorization")
+        cfg.allowCredentials = true
         val source = UrlBasedCorsConfigurationSource()
         source.registerCorsConfiguration("/**", cfg)
         return source
