@@ -50,6 +50,8 @@ class BusService(
     }
 
     private fun recalcAndPersist(b: Bus): Bus {
+        if (b.status == BusStatus.FUERA_SERVICIO) return b // no tocar buses dados de baja
+
         val newStatus = classify(b.kmCurrent, b.lastMaintenanceDate)
         val withStatus = b.copy(status = newStatus)
         val saved = repo.save(withStatus)
@@ -76,7 +78,13 @@ class BusService(
         return listOf(byKm, byDays).maxBy { order(it) }
     }
 
-    private fun order(s: BusStatus) = when(s){ BusStatus.OK->0; BusStatus.PROXIMO->1; BusStatus.VENCIDO->2; BusStatus.FUERA_SERVICIO->3 }
+    private fun order(s: BusStatus) = when (s) {
+        BusStatus.OK -> 0
+        BusStatus.PROXIMO -> 1
+        BusStatus.VENCIDO -> 2
+        BusStatus.FUERA_SERVICIO -> 3
+        BusStatus.REEMPLAZADO -> 4
+    }
 
     private fun maybeNotify(bus: Bus, status: BusStatus) {
         if (status == BusStatus.PROXIMO || status == BusStatus.VENCIDO) {
@@ -90,5 +98,37 @@ class BusService(
                 )
             )
         }
+    }
+
+    fun updateStatus(id: String, status: BusStatus, replacementId: String? = null): Bus {
+        val bus = repo.findById(id).orElseThrow()
+        val updated = bus.copy(status = status, replacementId = replacementId)
+        val saved = repo.save(updated)
+
+        if (status == BusStatus.FUERA_SERVICIO) {
+            notifications.save(
+                Notification(
+                    userEmail = "example@example.com",
+                    title = "Bus fuera de servicio",
+                    content = "El bus con placa ${bus.plate} fue marcado como FUERA DE SERVICIO.",
+                    link = "/buses/${bus.id}",
+                    read = false
+                )
+            )
+        }
+
+        if (status == BusStatus.REEMPLAZADO) {
+            notifications.save(
+                Notification(
+                    userEmail = "example@example.com",
+                    title = "Bus reemplazado",
+                    content = "El bus ${bus.plate} fue reemplazado por otro bus (ID: $replacementId).",
+                    link = "/buses/${replacementId ?: bus.id}",
+                    read = false
+                )
+            )
+        }
+
+        return saved
     }
 }

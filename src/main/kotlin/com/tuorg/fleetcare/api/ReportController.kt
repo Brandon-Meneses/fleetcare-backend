@@ -157,22 +157,37 @@ class ReportController(
     }
 
     private fun buildGenericPrompt(req: ReportRequest): String {
-        val schema = AreaPrompts.baseSchema()
+        val schema = """
+    Devuelve *EXCLUSIVAMENTE JSON válido*, sin explicaciones, sin código Markdown, sin texto adicional.
+    Si no puedes generar el JSON, devuelve exactamente: {"error": "invalid-json"}.
+    
+    Estructura obligatoria:
+    {
+      "summary": "string",
+      "generatedAt": "string",
+      "status": "string",
+      "kpis": [{"name": "string", "value": number}],
+      "sections": [{"title": "string", "content": "string"}],
+      "dataHash": "string"
+    }
+    """.trimIndent()
+
         val fleet = req.fleet.joinToString(",\n") {
             """{"plate":"${it.plate}","kmCurrent":${it.kmCurrent},"lastServiceAt":"${it.lastServiceAt ?: ""}"}"""
         }
+
         val cfg = """{"kmThreshold":${req.config.kmThreshold},"monthsThreshold":${req.config.monthsThreshold}}"""
+
         return """
-          $schema
-
-          Datos:
-          "fleet": [$fleet],
-          "config": $cfg,
-          "dataHash": "${req.dataHash}"
-
-          Genera KPIs: Total buses, Promedio KM, Vencidos, Próximos.
-          Responde SOLO con JSON válido.
-        """.trimIndent()
+        $schema
+        
+        Datos:
+        "fleet": [$fleet],
+        "config": $cfg,
+        "dataHash": "${req.dataHash}"
+        
+        Responde SOLO con JSON. Nada más.
+    """.trimIndent()
     }
 
     private fun buildAreaPrompt(area: Area, req: ReportRequest): String {

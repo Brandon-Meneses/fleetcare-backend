@@ -1,6 +1,7 @@
 package com.tuorg.fleetcare.api
 
 import com.tuorg.fleetcare.bus.Bus
+import com.tuorg.fleetcare.bus.BusStatus
 import com.tuorg.fleetcare.service.AutoScheduleService
 import com.tuorg.fleetcare.service.BusService
 import com.tuorg.fleetcare.service.PredictionService
@@ -12,6 +13,8 @@ data class CreateBusReq(val plate: String, val kmInitial: Long, val dateEnabled:
 data class UpdateKmReq(val km: Long)
 data class UpdateLastMaintReq(val date: String)
 data class PredictionRes(val dateKm: String?, val dateTime: String?, val finalDate: String?, val note: String?)
+data class UpdateBusStatusReq(val status: String, val replacementId: String?)
+
 
 @RestController
 @RequestMapping("/buses")
@@ -53,4 +56,18 @@ class BusController(
     @PostMapping("/{id}/auto-schedule")
     fun autoSchedule(@PathVariable id: String, @RequestParam(required=false) adjustDays: Long?) =
         ResponseEntity.ok(auto.scheduleByPrediction(id, adjustDays))
+
+
+    @PutMapping("/{id}/status")
+    fun updateStatus(
+        @PathVariable id: String,
+        @RequestBody r: UpdateBusStatusReq
+    ): ResponseEntity<Bus> {
+        val status = try {
+            BusStatus.valueOf(r.status.uppercase())
+        } catch (e: IllegalArgumentException) {
+            return ResponseEntity.badRequest().build()
+        }
+        return ResponseEntity.ok(busService.updateStatus(id, status, r.replacementId))
+    }
 }

@@ -9,24 +9,24 @@ import org.springframework.web.reactive.function.client.WebClient
 
 @Service
 class GroqService(
-    @Value("\${groq.api.url}") private val apiUrl: String,
     @Value("\${groq.api.key}") private val apiKey: String?,
     @Value("\${groq.model}") private val model: String,
     private val mapper: ObjectMapper
 ) {
+
     private val client = WebClient.builder()
-        .baseUrl(apiUrl)
+        .baseUrl("https://api.groq.com/openai/v1/chat/completions")
         .defaultHeader("Authorization", "Bearer ${apiKey ?: ""}")
         .defaultHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
         .build()
 
     fun generateJson(prompt: String): Map<String, Any?> {
+
         if (apiKey.isNullOrBlank()) {
-            // Fallback local si no hay key
             return mapOf(
-                "summary" to "Fallback local (sin GROQ_API_KEY).",
-                "kpis" to listOf(mapOf("name" to "Ejemplo", "value" to "OK")),
-                "sections" to listOf(mapOf("title" to "Nota", "content" to "Configura GROQ_API_KEY en el backend.")),
+                "summary" to "Fallback local: sin API KEY",
+                "kpis" to listOf(mapOf("name" to "Ejemplo", "value" to 0)),
+                "sections" to listOf(mapOf("title" to "Nota", "content" to "Configure GROQ_API_KEY")),
                 "dataHash" to "no-key"
             )
         }
@@ -35,7 +35,13 @@ class GroqService(
             "model" to model,
             "temperature" to 0.2,
             "messages" to listOf(
-                mapOf("role" to "system", "content" to "Responde SOLO con JSON válido, sin texto adicional."),
+                mapOf("role" to "system",
+                    "content" to """
+                        Responde estrictamente SOLO un JSON válido.
+                        Sin markdown, sin ```json, sin texto adicional.
+                        Si no puedes generar JSON, responde {"error":"invalid-json"}.
+                    """.trimIndent()
+                ),
                 mapOf("role" to "user", "content" to prompt)
             )
         )
@@ -44,20 +50,29 @@ class GroqService(
             .bodyValue(payload)
             .retrieve()
             .bodyToMono(Map::class.java)
-            .block()
+            .block() ?: return fallback("Respuesta nula de Groq")
 
-        val content = ((resp?.get("choices") as? List<*>)?.firstOrNull() as? Map<*, *>)?.get("message") as? Map<*, *>
-        val text = content?.get("content")?.toString() ?: "{}"
+        // ========= EXTRAER EL CONTENIDO CORRECTO ===========
+        val choices = resp["choices"] as? List<*> ?: return fallback("choices vacío")
+        val msg = choices.firstOrNull() as? Map<*, *> ?: return fallback("choices[0] null")
+        val message = msg["message"] as? Map<*, *> ?: return fallback("message null")
+        val text = message["content"]?.toString() ?: "{}"
 
         return try {
             @Suppress("UNCHECKED_CAST")
             mapper.readValue(text, Map::class.java) as Map<String, Any?>
         } catch (ex: Exception) {
-            mapOf(
-                "summary" to "Fallback: la IA no devolvió JSON válido.",
-                "kpis" to emptyList<Map<String, String>>(),
-                "sections" to listOf(mapOf("title" to "Error", "content" to ex.message)),
-            )
+            fallback("Groq devolvió texto NO JSON: $text")
         }
+    }
+
+    private fun fallback(reason: String): Map<String, Any?> {
+        return mapOf(
+            "summary" to "Fallback: $reason",
+            "kpis" to emptyList<Map<String, Any?>>(),
+            "sections" to listOf(
+                mapOf("title" to "Error", "content" to reason)
+            )
+        )
     }
 }
