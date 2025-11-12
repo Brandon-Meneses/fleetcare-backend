@@ -5,12 +5,17 @@ import com.tuorg.fleetcare.api.dto.MaintenanceOrderResponse
 import com.tuorg.fleetcare.maintanance.MaintenanceOrder
 import com.tuorg.fleetcare.maintanance.MaintenanceOrderRepository
 import com.tuorg.fleetcare.maintanance.MaintenanceStatus
+import com.tuorg.fleetcare.notify.NotificationRepository
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 @Service
 class MaintenanceService(
-    private val repo: MaintenanceOrderRepository
+    private val repo: MaintenanceOrderRepository,
+    private val busService: BusService,
+    private val notifications: NotificationRepository
 ) {
     fun listAll(): List<MaintenanceOrderResponse> =
         repo.findAll().map { it.toResponse() }
@@ -38,13 +43,42 @@ class MaintenanceService(
         return repo.save(updated).toResponse()
     }
 
+//    fun close(id: String, notes: String?): MaintenanceOrderResponse {
+//        val order = repo.findById(id).orElseThrow()
+//        val updated = order.copy(
+//            status = MaintenanceStatus.CLOSED,
+//            closedAt = LocalDateTime.now(),
+//            notes = notes ?: order.notes
+//        )
+//        return repo.save(updated).toResponse()
+//    }
+
+    @Transactional
     fun close(id: String, notes: String?): MaintenanceOrderResponse {
         val order = repo.findById(id).orElseThrow()
+
+        require(order.status != MaintenanceStatus.CLOSED) {
+            "La orden ya fue cerrada previamente"
+        }
+
         val updated = order.copy(
             status = MaintenanceStatus.CLOSED,
             closedAt = LocalDateTime.now(),
             notes = notes ?: order.notes
         )
+
+        // ✅ 1. Actualiza fecha de mantenimiento del bus
+        busService.updateLastMaintenance(order.busId, LocalDate.now())
+
+        // ✅ 2. Marca alertas vinculadas como atendidas
+        notifications.findAll()
+            .filter { it.content.contains(order.busId, ignoreCase = true) && !it.read }
+            .forEach {
+                it.read = true
+                notifications.save(it)
+            }
+
+        // ✅ 3. Guarda y retorna DTO actualizado
         return repo.save(updated).toResponse()
     }
 }

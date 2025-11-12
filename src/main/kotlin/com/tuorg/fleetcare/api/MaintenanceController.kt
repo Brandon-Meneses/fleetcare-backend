@@ -37,7 +37,7 @@ class MaintenanceController(
     fun open(@PathVariable id: String): ResponseEntity<MaintenanceOrderResponse> =
         ResponseEntity.ok(service.open(id))
 
-    @Operation(summary = "Cierra una orden de mantenimiento (cambia estado a CLOSED)")
+    @Operation(summary = "Cierra una orden de mantenimiento (actualiza bus y alertas)")
     @PatchMapping("/{id}/close")
     fun close(
         @PathVariable id: String,
