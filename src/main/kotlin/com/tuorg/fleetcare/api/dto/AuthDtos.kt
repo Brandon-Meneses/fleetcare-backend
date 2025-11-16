@@ -9,4 +9,8 @@ data class RegisterRequest(
     val areas: List<Area> = emptyList()
 )
 data class LoginRequest(val email: String, val password: String)
-data class LoginResponse(val token: String)
+data class LoginResponse(
+    val token: String,
+    val roles: List<String>,
+    val areas: List<String>
+)

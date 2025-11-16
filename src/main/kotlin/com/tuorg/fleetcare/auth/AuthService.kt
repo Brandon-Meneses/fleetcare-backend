@@ -32,7 +32,11 @@ class AuthService(
             roles = saved.roles.map { it.name },
             areas = saved.areas.map { it.name }
         )
-        return LoginResponse(token)
+        return LoginResponse(
+            token = token,
+            roles = user.roles.map { it.name },
+            areas = user.areas.map { it.name }
+        )
     }
 
     fun login(req: LoginRequest): LoginResponse {
@@ -44,6 +48,10 @@ class AuthService(
             roles = user.roles.map { it.name },
             areas = user.areas.map { it.name }
         )
-        return LoginResponse(token)
+        return LoginResponse(
+            token = token,
+            roles = user.roles.map { it.name },
+            areas = user.areas.map { it.name }
+        )
     }
 }
