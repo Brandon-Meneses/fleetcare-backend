@@ -13,6 +13,7 @@ import java.time.temporal.ChronoUnit
 class BusService(
     private val repo: BusRepository,
     private val notifications: NotificationRepository,
+    private val predictor: PredictionService,
     @Value("\${rules.km.threshold:50000}") private val kmThreshold: Long,
     @Value("\${rules.km.maxAnnual:200000}") private val kmMaxAnnual: Long,
     @Value("\${rules.days.threshold:90}") private val daysThreshold: Long,
@@ -50,11 +51,38 @@ class BusService(
     }
 
     private fun recalcAndPersist(b: Bus): Bus {
-        if (b.status == BusStatus.FUERA_SERVICIO) return b // no tocar buses dados de baja
 
+        if (b.status == BusStatus.FUERA_SERVICIO) return b
+
+        val today = LocalDate.now()
+
+        // 🔥 REGLA: mantenimiento muy antiguo = VENCIDO + próxima fecha = HOY
+        if (b.lastMaintenanceDate != null) {
+            val daysSince = ChronoUnit.DAYS.between(b.lastMaintenanceDate, today)
+            val maxDays = daysThreshold   // tu regla, ej. 90 días
+
+            if (daysSince > maxDays) {
+                val forced = b.copy(
+                    status = BusStatus.VENCIDO,
+                    nextMaintenanceDate = today  // 🔥 necesita mantenimiento HOY
+                )
+                val saved = repo.save(forced)
+                maybeNotify(saved, BusStatus.VENCIDO)
+                return saved
+            }
+        }
+
+        // 🔄 Lógica normal
         val newStatus = classify(b.kmCurrent, b.lastMaintenanceDate)
-        val withStatus = b.copy(status = newStatus)
-        val saved = repo.save(withStatus)
+
+        val predicted = predictor.predictNext(b)
+
+        val updated = b.copy(
+            status = newStatus,
+            nextMaintenanceDate = predicted
+        )
+
+        val saved = repo.save(updated)
         maybeNotify(saved, newStatus)
         return saved
     }
@@ -139,5 +167,27 @@ class BusService(
         } else {
             false
         }
+    }
+    @Transactional
+    fun updateGeneral(
+        id: String,
+        plate: String,
+        km: Long,
+        lastMaint: LocalDate?,
+        alias: String?,
+        notes: String?
+    ): Bus {
+
+        val bus = get(id)
+
+        val updated = bus.copy(
+            plate = plate,
+            kmCurrent = km,
+            lastMaintenanceDate = lastMaint,
+            alias = alias,
+            notes = notes
+        )
+
+        return recalcAndPersist(updated)
     }
 }

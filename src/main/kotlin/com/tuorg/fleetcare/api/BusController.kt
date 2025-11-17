@@ -14,6 +14,13 @@ data class UpdateKmReq(val km: Long)
 data class UpdateLastMaintReq(val date: String)
 data class PredictionRes(val dateKm: String?, val dateTime: String?, val finalDate: String?, val note: String?)
 data class UpdateBusStatusReq(val status: String, val replacementId: String?)
+data class UpdateBusReq(
+    val plate: String,
+    val kmCurrent: Long,
+    val lastMaintenance: String?,
+    val alias: String?,
+    val notes: String?
+)
 
 
 @RestController
@@ -78,5 +85,38 @@ class BusController(
         } else {
             ResponseEntity.notFound().build() // 404
         }
+    }
+
+    @GetMapping("/{id}/next-maintenance")
+    fun nextMaintenance(@PathVariable id: String): ResponseEntity<Map<String, String?>> {
+        val p = prediction.predict(id)
+
+        val resp = mapOf(
+            "busId" to id,
+            "nextMaintenance" to p.finalDate?.toString(),
+            "reason" to p.note
+        )
+
+        return ResponseEntity.ok(resp)
+    }
+
+    @PutMapping("/{id}")
+    fun update(
+        @PathVariable id: String,
+        @RequestBody r: UpdateBusReq
+    ): ResponseEntity<Bus> {
+
+        val lastMaint = r.lastMaintenance?.let { LocalDate.parse(it) }
+
+        val updated = busService.updateGeneral(
+            id = id,
+            plate = r.plate,
+            km = r.kmCurrent,
+            lastMaint = lastMaint,
+            alias = r.alias,
+            notes = r.notes
+        )
+
+        return ResponseEntity.ok(updated)
     }
 }

@@ -6,7 +6,9 @@ import java.time.LocalDate
 @Entity
 @Table(name = "buses")
 data class Bus(
-    @Id @GeneratedValue(strategy = GenerationType.UUID)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     val id: String? = null,
 
     @Column(unique = true, nullable = false)
@@ -15,13 +17,23 @@ data class Bus(
     @Column(nullable = false)
     val kmCurrent: Long = 0,
 
+    // Última fecha de mantenimiento
     val lastMaintenanceDate: LocalDate? = null,
 
-    // 🔹 Estado operativo y administrativo del bus
+    val nextMaintenanceDate: LocalDate? = null,
+
+    // Alias opcional del bus (ej: "EXPRESO 7", "BUS ROJO")
+    val alias: String? = null,
+
+    // Notas adicionales del bus
+    @Column(length = 2000)
+    val notes: String? = null,
+
+    // Estado administrativo-operativo
     @Enumerated(EnumType.STRING)
     val status: BusStatus = BusStatus.OK,
 
-    // 🔹 Si el bus fue reemplazado, referencia al nuevo bus
+    // Si fue reemplazado, referencia al bus nuevo
     val replacementId: String? = null
 )
 
