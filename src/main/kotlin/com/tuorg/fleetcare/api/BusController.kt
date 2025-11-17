@@ -70,4 +70,13 @@ class BusController(
         }
         return ResponseEntity.ok(busService.updateStatus(id, status, r.replacementId))
     }
+
+    @DeleteMapping("/{id}")
+    fun delete(@PathVariable id: String): ResponseEntity<Void> {
+        return if (busService.delete(id)) {
+            ResponseEntity.noContent().build() // 204
+        } else {
+            ResponseEntity.notFound().build() // 404
+        }
+    }
 }

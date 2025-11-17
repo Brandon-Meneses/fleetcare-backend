@@ -131,4 +131,13 @@ class BusService(
 
         return saved
     }
+
+    fun delete(id: String): Boolean {
+        return if (repo.existsById(id)) {
+            repo.deleteById(id)
+            true
+        } else {
+            false
+        }
+    }
 }
