@@ -3,7 +3,9 @@ package com.tuorg.fleetcare.notify
 import jakarta.persistence.*
 import java.time.Instant
 
-@Entity @Table(name = "notifications")
+@Entity
+@EntityListeners(NotificationListener::class)
+@Table(name = "notifications")
 class Notification(
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     var id: Long? = null,
