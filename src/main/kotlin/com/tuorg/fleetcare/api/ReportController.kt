@@ -12,6 +12,7 @@ import com.tuorg.fleetcare.report.ReportEntity
 import com.tuorg.fleetcare.report.ReportRepository
 import com.tuorg.fleetcare.service.GroqService
 import com.tuorg.fleetcare.user.domain.Area
+import com.tuorg.fleetcare.user.domain.User
 import com.tuorg.fleetcare.user.repo.UserRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -40,11 +41,16 @@ class ReportController(
     fun generate(@Valid @RequestBody req: ReportRequest): ResponseEntity<ReportResponse> {
         val prompt = buildGenericPrompt(req)
         val resp = callGroqAndMap(req, prompt)
+        val auth = SecurityContextHolder.getContext().authentication
+        val area = (auth.authorities.firstOrNull { it.authority.startsWith("AREA_") }
+            ?.authority?.removePrefix("AREA_")
+            ?.let { Area.valueOf(it) })
+            ?: Area.MAINTENANCE
 
         // Guardar historial (área opcional; si no aplica, puedes usar null o un área "GENERIC")
         reportRepository.save(
             ReportEntity(
-                area = Area.MAINTENANCE, // o un enum/área por defecto si este endpoint es general
+                area = area,
                 dataHash = resp.dataHash,
                 payloadJson = objectMapper.writeValueAsString(resp)
             )
@@ -67,16 +73,17 @@ class ReportController(
     // Reporte por área – exige que el usuario tenga la autoridad de esa área
     @Operation(summary = "Genera reporte por área", security = [SecurityRequirement(name = "bearer-jwt")])
     @PostMapping("/area/{area}")
-    @PreAuthorize("hasAuthority('AREA_' + #area)")
+    //@PreAuthorize("hasAuthority('AREA_' + #area)")
     @Transactional
     fun generateForArea(
         @PathVariable area: Area,
         @Valid @RequestBody req: ReportRequest
     ): ResponseEntity<ReportResponse> {
+
         val prompt = buildAreaPrompt(area, req)
         val resp = callGroqAndMap(req, prompt)
 
-        // 1) Guardar historial del reporte por área
+        // 1) Guardar historial
         reportRepository.save(
             ReportEntity(
                 area = area,
@@ -85,16 +92,36 @@ class ReportController(
             )
         )
 
-        // 2) Notificar a TODOS los usuarios del área
-        val recipients = userRepository.findAllByAreasContaining(area)
-        val link = "/report/history/$area" // ruta para consultar historial por área
-        val title = "Reporte $area generado"
-        val content = "Se generó un informe de mantenimiento para el área $area (dataHash=${resp.dataHash})."
+        // 2) Info del usuario autenticado
+        val authentication = SecurityContextHolder.getContext().authentication
+        val actor = authentication?.name ?: "system"
 
+        // 3) Determinar si es ADMIN
+        val isAdmin = authentication
+            ?.authorities
+            ?.any { it.authority.equals("ADMIN", ignoreCase = true) }
+            ?: false
+
+        // 4) Lista de destinatarios
+        val recipients: List<User> = if (isAdmin) {
+            // ADMIN → notifica a todo el área
+            userRepository.findAllByAreasContaining(area)
+        } else {
+            // USER → solo a sí mismo
+            userRepository.findByEmail(actor)
+                .map { listOf(it) }
+                .orElse(emptyList())
+        }
+
+        val link = "/report/history/$area"
+        val title = "Reporte $area generado"
+        val content = "Se generó un informe del área $area (dataHash=${resp.dataHash})."
+
+        // 5) Enviar notificaciones
         recipients.forEach { u ->
             notificationRepository.save(
                 Notification(
-                    userEmail = u.email,
+                    userEmail = u.email,   // tu entidad usa exactamente "email"
                     title = title,
                     content = content,
                     link = link
@@ -102,9 +129,8 @@ class ReportController(
             )
         }
 
-        // 3) (Opcional) notificar también al actor que lo disparó
-        val actor = SecurityContextHolder.getContext().authentication?.name ?: "system"
-        if (recipients.none { it.email == actor }) {
+        // 6) Si ADMIN generó el reporte pero NO está en recipients (caso raro)
+        if (isAdmin && recipients.none { it.email == actor }) {
             notificationRepository.save(
                 Notification(
                     userEmail = actor,
@@ -155,22 +181,18 @@ class ReportController(
             dataHash = dataHash
         )
     }
+    fun getUserArea(): Area {
+        val auth = SecurityContextHolder.getContext().authentication
+        val areaAuth = auth.authorities
+            .firstOrNull { it.authority.startsWith("AREA_") }
+            ?.authority?.removePrefix("AREA_")
+
+        return if (areaAuth != null) Area.valueOf(areaAuth) else Area.MAINTENANCE
+    }
 
     private fun buildGenericPrompt(req: ReportRequest): String {
-        val schema = """
-    Devuelve *EXCLUSIVAMENTE JSON válido*, sin explicaciones, sin código Markdown, sin texto adicional.
-    Si no puedes generar el JSON, devuelve exactamente: {"error": "invalid-json"}.
-    
-    Estructura obligatoria:
-    {
-      "summary": "string",
-      "generatedAt": "string",
-      "status": "string",
-      "kpis": [{"name": "string", "value": number}],
-      "sections": [{"title": "string", "content": "string"}],
-      "dataHash": "string"
-    }
-    """.trimIndent()
+        val area = getUserArea()
+        val header = AreaPrompts.by(area)
 
         val fleet = req.fleet.joinToString(",\n") {
             """{"plate":"${it.plate}","kmCurrent":${it.kmCurrent},"lastServiceAt":"${it.lastServiceAt ?: ""}"}"""
@@ -179,14 +201,14 @@ class ReportController(
         val cfg = """{"kmThreshold":${req.config.kmThreshold},"monthsThreshold":${req.config.monthsThreshold}}"""
 
         return """
-        $schema
-        
+        $header
+
         Datos:
         "fleet": [$fleet],
         "config": $cfg,
         "dataHash": "${req.dataHash}"
-        
-        Responde SOLO con JSON. Nada más.
+
+        Responde SOLO JSON válido.
     """.trimIndent()
     }
 
