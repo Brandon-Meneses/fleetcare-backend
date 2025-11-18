@@ -2,7 +2,10 @@ package com.tuorg.fleetcare.service
 
 import com.tuorg.fleetcare.bus.Bus
 import com.tuorg.fleetcare.bus.BusRepository
+import com.tuorg.fleetcare.notify.Notification
+import com.tuorg.fleetcare.notify.NotificationRepository
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -11,6 +14,7 @@ import kotlin.math.ceil
 @Service
 class PredictionService(
     private val buses: BusRepository,
+    private val notifications: NotificationRepository,
     @Value("\${rules.km.threshold:50000}") private val kmThreshold: Long,
     @Value("\${rules.days.threshold:90}") private val daysThreshold: Long,
     @Value("\${rules.km.dailyEstimate:120}") private val kmDailyEstimate: Long
@@ -31,6 +35,19 @@ class PredictionService(
 
         val finalDate = listOfNotNull(dateKm, dateTime).minOrNull()
         val note = if (finalDate == null) "Datos insuficientes" else null
+        val actor = SecurityContextHolder.getContext().authentication?.name ?: "system"
+
+        if (finalDate != null && !finalDate.isAfter(LocalDate.now())) {
+            notifications.save(
+                Notification(
+                    userEmail = actor,
+                    title = "Mantenimiento vencido por predicción",
+                    content = "El bus ${b.plate} requiere mantenimiento inmediatamente (predicción vencida).",
+                    link = "/buses/$busId",
+                    read = false
+                )
+            )
+        }
 
         return Prediction(busId, dateKm, dateTime, finalDate, note)
     }

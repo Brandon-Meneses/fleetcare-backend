@@ -2,6 +2,9 @@ package com.tuorg.fleetcare.service
 
 import com.tuorg.fleetcare.bus.BusStatus
 import com.tuorg.fleetcare.maintanance.*
+import com.tuorg.fleetcare.notify.Notification
+import com.tuorg.fleetcare.notify.NotificationRepository
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -11,6 +14,7 @@ import java.time.LocalDateTime
 class AutoScheduleService(
     private val pred: PredictionService,
     private val repo: MaintenanceOrderRepository,
+    private val notifications: NotificationRepository,
     private val busService: BusService
 ) {
     @Transactional
@@ -40,6 +44,16 @@ class AutoScheduleService(
         }
 
         val date = p.finalDate!!.atStartOfDay().plusDays(adjustDays ?: 0)
+
+        notifications.save(
+            Notification(
+                userEmail = SecurityContextHolder.getContext().authentication.name,
+                title = "Orden auto-agendada",
+                content = "Se creó automáticamente una orden de mantenimiento para el bus ${bus.plate}.",
+                link = "/maintenance?busId=$busId",
+                read = false
+            )
+        )
 
         return repo.save(
             MaintenanceOrder(

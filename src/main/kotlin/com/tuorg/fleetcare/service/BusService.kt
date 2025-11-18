@@ -3,7 +3,9 @@ package com.tuorg.fleetcare.service
 import com.tuorg.fleetcare.bus.*
 import com.tuorg.fleetcare.notify.Notification
 import com.tuorg.fleetcare.notify.NotificationRepository
+import com.tuorg.fleetcare.user.domain.User
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
@@ -115,10 +117,11 @@ class BusService(
     }
 
     private fun maybeNotify(bus: Bus, status: BusStatus) {
+        val actor = SecurityContextHolder.getContext().authentication?.name ?: "system"
         if (status == BusStatus.PROXIMO || status == BusStatus.VENCIDO) {
             notifications.save(
                 Notification(
-                    userEmail = "example@example.com",
+                    userEmail = actor,
                     title = "Mantenimiento ${status.name.lowercase()}",
                     content = "El bus con placa ${bus.plate} requiere atención de mantenimiento.",
                     link = "/buses/${bus.id}",
@@ -132,11 +135,12 @@ class BusService(
         val bus = repo.findById(id).orElseThrow()
         val updated = bus.copy(status = status, replacementId = replacementId)
         val saved = repo.save(updated)
+        val actor = SecurityContextHolder.getContext().authentication?.name ?: "system"
 
         if (status == BusStatus.FUERA_SERVICIO) {
             notifications.save(
                 Notification(
-                    userEmail = "example@example.com",
+                    userEmail = actor,
                     title = "Bus fuera de servicio",
                     content = "El bus con placa ${bus.plate} fue marcado como FUERA DE SERVICIO.",
                     link = "/buses/${bus.id}",
@@ -148,7 +152,7 @@ class BusService(
         if (status == BusStatus.REEMPLAZADO) {
             notifications.save(
                 Notification(
-                    userEmail = "example@example.com",
+                    userEmail = actor,
                     title = "Bus reemplazado",
                     content = "El bus ${bus.plate} fue reemplazado por otro bus (ID: $replacementId).",
                     link = "/buses/${replacementId ?: bus.id}",
