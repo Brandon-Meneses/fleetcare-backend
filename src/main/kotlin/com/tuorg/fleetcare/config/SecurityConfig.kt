@@ -3,6 +3,7 @@ package com.tuorg.fleetcare.config
 import com.tuorg.fleetcare.security.JwtAuthEntryPoint
 import com.tuorg.fleetcare.security.JwtAuthFilter
 import com.tuorg.fleetcare.security.JwtUtil
+import com.tuorg.fleetcare.user.repo.UserRepository
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -23,7 +24,9 @@ class SecurityConfig(
     @Value("\${app.cors.allowed-origins}") private val allowedOrigins: String,
     @Value("\${app.jwt.secret}") private val jwtSecret: String,
     @Value("\${app.jwt.exp-minutes}") private val jwtExpMinutes: Long,
+    private val userRepo: UserRepository // <-- Importante añadir esto
 ) {
+
     @Bean
     fun jwtUtil() = JwtUtil(jwtSecret, jwtExpMinutes)
 
@@ -36,19 +39,43 @@ class SecurityConfig(
         jwtAuthFilter: JwtAuthFilter,
         jwtAuthEntryPoint: JwtAuthEntryPoint
     ): SecurityFilterChain {
+
+        val noUsers = userRepo.count() == 0L
+
         http
             .csrf { it.disable() }
             .cors { }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .exceptionHandling { it.authenticationEntryPoint(jwtAuthEntryPoint) }
-            .authorizeHttpRequests {
-                it.requestMatchers("/auth/**").permitAll()
-                    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                    .requestMatchers("/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
-                    .requestMatchers("/actuator/**").permitAll()
-                    .anyRequest().authenticated()
+            .authorizeHttpRequests { auth ->
+
+                // ----------------------------------------------------------
+                // 1️⃣ Si NO hay usuarios → permitir crear el primer ADMIN
+                // ----------------------------------------------------------
+                if (noUsers) {
+                    auth.requestMatchers(HttpMethod.POST, "/admin/users").permitAll()
+                } else {
+                    // ------------------------------------------------------
+                    // 2️⃣ Si ya existe al menos uno → requiere token ADMIN
+                    // ------------------------------------------------------
+                    auth.requestMatchers(HttpMethod.POST, "/admin/users").hasAuthority("ADMIN")
+                }
+
+                // ----------------------------------------------------------
+                // Rutas libres
+                // ----------------------------------------------------------
+                auth.requestMatchers("/auth/**").permitAll()
+                auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                auth.requestMatchers("/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
+                auth.requestMatchers("/actuator/**").permitAll()
+
+                // ----------------------------------------------------------
+                // Todo lo demás requiere autenticación
+                // ----------------------------------------------------------
+                auth.anyRequest().authenticated()
             }
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter::class.java)
+
         return http.build()
     }
 
