@@ -50,7 +50,7 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
 
                 // ----------------------------------------------------------
-                // 1️⃣ Si NO hay usuarios → permitir crear el primer ADMIN
+                //  Si NO hay usuarios → permitir crear el primer ADMIN
                 // ----------------------------------------------------------
                 if (noUsers) {
                     auth.requestMatchers(HttpMethod.POST, "/admin/users").permitAll()
