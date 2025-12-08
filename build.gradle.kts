@@ -40,6 +40,7 @@ dependencies {
 	implementation("com.auth0:java-jwt:4.4.0")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0")
     implementation("org.springframework.boot:spring-boot-starter-mail")
+    implementation("com.resend:resend-java:2.1.0")
 
 }
 

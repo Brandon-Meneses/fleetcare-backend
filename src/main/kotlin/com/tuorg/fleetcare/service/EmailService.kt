@@ -1,19 +1,30 @@
 package com.tuorg.fleetcare.service
 
-import org.springframework.mail.SimpleMailMessage
-import org.springframework.mail.javamail.JavaMailSender
-import org.springframework.stereotype.Service
 
+import com.resend.Resend
+import com.resend.services.emails.model.SendEmailRequest
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.stereotype.Service
 
 @Service
 class EmailService(
-    private val mailSender: JavaMailSender
+
+    @Value("\${resend.api.key}")
+    private val apiKey: String
+
 ) {
+
     fun send(to: String, subject: String, message: String) {
-        val mail = SimpleMailMessage()
-        mail.setTo(to)
-        mail.setSubject(subject)
-        mail.setText(message)
-        mailSender.send(mail)
+
+        val resend = Resend(apiKey)
+
+        val params = SendEmailRequest.builder()
+            .from("FleetCare <onboarding@resend.dev>")
+            .to(listOf(to))
+            .subject(subject)
+            .text(message)
+            .build()
+
+        resend.emails().send(params)
     }
 }
